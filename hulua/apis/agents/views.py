@@ -120,33 +120,33 @@ async def chat(
         results=req_body.results,
     )
 
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+
+from hulua.agents_services.zhipu import ChatZhipuAI
+
+llm = ChatZhipuAI(
+    api_key="5883dd03650ccbfd219da66b3832e0ef.UuJtNmuEj5S9mROb", model="glm-4-plus"
+)
 
 @router.post("/ques")
 async def ques(body: Dict) -> FastAPIStreamingResponse:
-    from langchain_core.messages import (
-        AIMessage,
-        BaseMessage,
-        HumanMessage,
-        SystemMessage,
-        ToolMessage,
-    )
-
-    from hulua.agents_services.zhipu import ChatZhipuAI
-
-    llm = ChatZhipuAI(
-        api_key="5883dd03650ccbfd219da66b3832e0ef.UuJtNmuEj5S9mROb", model="glm-4-plus"
-    )
     candi = body.get("candi", "")
     if isinstance(candi, str):
         candi = eval(candi)
     ques_list = candi.keys()
     index = len(ques_list)
     if index >= 8:
-        prompt = """你是一名保险代理人面试官，目标是选出潜在的绩优代理人，已知候选人的资料如下：【{candi}】,需要以面试官的口吻提出10个问题来全面了解代理人信息，当前是第{index}个问题，类型为问答题，你需要只输出问题本身，不需要包含题号，以列表的形式展示，如[""]，问题如下："""
+        prompt = """已知候选人的资料如下：【{candi}】,需要以面试官的口吻提出10个问题来全面了解代理人信息，当前是第{index}个问题，类型为问答题，你需要只输出问题本身，不需要包含题号，以列表的形式展示一个和之前不同的问题，如[""]，问题如下："""
     else:
-        prompt = """你是一名保险代理人面试官，目标是选出潜在的绩优代理人，已知候选人的资料如下：【{candi}】,需要以面试官的口吻提出10个问题来全面了解代理人信息，当前是第{index}个问题，类型为选择题，你需要只输出问题本身和4个选项，不需要包含选项标识和题号，以列表的形式展示，如["","","","",""]，问题如下："""
+        prompt = """已知候选人的资料如下：【{candi}】,需要以面试官的口吻提出10个问题来全面了解代理人信息，当前是第{index}个问题，类型为选择题，你需要只输出问题本身和4个选项，不需要包含选项标识和题号，以列表的形式展示一个问题，如["","","","",""]，问题如下："""
     messages = [
-        SystemMessage(content="你是一个小说家"),
+        SystemMessage(content="你是一名保险代理人面试官，目标是选出潜在的绩优代理人。"),
         HumanMessage(content=prompt.format(candi=candi, index=index)),
     ]
     result = {
@@ -160,6 +160,65 @@ async def ques(body: Dict) -> FastAPIStreamingResponse:
 
     return result
 
+@router.post("/point")
+async def point(body: Dict) -> FastAPIStreamingResponse:
+    candi = body.get("candi", "")
+    if isinstance(candi, str):
+        candi = eval(candi)
+    ques_list = candi.keys()
+    index = len(ques_list)
+    prompt = """已知候选人的资料如下：【{candi}】,需要综合评估一下候选人的业务经验和潜在能力，并且给出评分，最高为100分，以列表形式呈现，["评估结论","评分"]，不超过150字，综合评估如下："""
+    messages = [
+        SystemMessage(content="你是一名保险代理人面试官，目标是选出潜在的绩优代理人。"),
+        HumanMessage(content=prompt.format(candi=candi, index=index)),
+    ]
+    result = {
+        "code": 200,
+        "message": "success",
+        "result": llm._generate(messages)
+        .dict()
+        .get("generations", [{}])[0]
+        .get("text", {}),
+    }
+
+    return result
+
+import pandas as pd
+df_agents = pd.read_excel('hulua/outputs/agents.xlsx')
+df_customer = pd.read_excel('hulua/outputs/customers.xlsx')
+
+@router.post("/show_agent")
+async def point(body: Dict) -> FastAPIStreamingResponse:
+    current = body.get('current')
+    pageSize = body.get('pageSize')
+    index = current - 1
+    df_agents_tmp = df_agents[index*pageSize:index*pageSize+pageSize]
+    agents = [df_agents_tmp.iloc[i] for i in range(len(df_agents_tmp))]
+    result = {
+        "code": 200,
+        "message": "success",
+        "result": agents,
+        "total": len(df_agents)
+    }
+
+    return result
+
+
+@router.post("/show_customer")
+async def point(body: Dict) -> FastAPIStreamingResponse:
+    current = body.get('current')
+    pageSize = body.get('pageSize')
+    index = current - 1
+    df_customer_tmp = df_customer[index*pageSize:index*pageSize+pageSize]
+    customers = [df_customer_tmp.iloc[i] for i in range(len(df_customer_tmp))]
+    result = {
+        "code": 200,
+        "message": "success",
+        "result": customers,
+        "total": len(df_customer)
+    }
+
+    return result
 
 class ToolModel(BaseModel):
     name: str
